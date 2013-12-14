@@ -164,7 +164,6 @@ else
     opts = encrypt_parser(args)
     t = (opts[:time] * opts[:speed]).to_i
     opts[:out].puts TimelockPuzzle.encrypt(get_contents(opts[:in]), t)
-    puts opts.inspect
   when "decrypt"
     if args.empty?
       puts usage_decrypt
