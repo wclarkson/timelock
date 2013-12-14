@@ -68,7 +68,11 @@ class TimelockPuzzle
   def self.int_to_hexstring(int)
     return ["%x" % int].pack("H*")
   end
-
+  
+  def self.correct_time(time)
+    #return time
+    return (Math.sqrt(35200000*time + 63505209) - 5717) / 1760
+  end
 end
 
 
@@ -162,13 +166,9 @@ else
       exit
     end
     opts = encrypt_parser(args)
-    t = (opts[:time] * opts[:speed]).to_i
+    t = (TimelockPuzzle.correct_time(opts[:time]) * opts[:speed]).to_i
     opts[:out].puts TimelockPuzzle.encrypt(get_contents(opts[:in]), t)
   when "decrypt"
-    if args.empty?
-      puts usage_decrypt
-      exit
-    end
     opts = decrypt_parser(args)
     opts[:out].puts TimelockPuzzle.decrypt(get_contents(opts[:in]))
   when "benchmark"
