@@ -22,13 +22,7 @@ class TimelockPuzzle
 
     key %= n
 
-#    puts "a = #{a}"
-#    puts "e = #{e}"
-#    puts "keynum = #{key}"
-#    puts "key    = #{int_to_hexstring(key).inspect()}"
-
     b = OpenSSL::BN.new(a.to_s).mod_exp(e, n)
-#    puts "b = #{b}"
     ck = (key + b) % n
 
     cipher.key = int_to_hexstring(key % n)
@@ -43,20 +37,14 @@ class TimelockPuzzle
   end
 
   def self.decrypt(yaml)
-#    puts "DECRYPTING"
     hash = YAML.load(yaml)
     n  = hash["n"].hex
     t  = hash["t"].hex
     a  = hash["a"].hex
     ck = hash["ck"].hex
     cm = Base64.decode64(hash["cm"])
-#    puts "ck:%x" % ck
-#    puts "a = #{a}, e = #{2**t}, mod = #{n}"
     b  = OpenSSL::BN.new(a.to_s).mod_exp(2**t, n)
-#    puts "b = #{b}"
     k  = int_to_hexstring(ck - b)
-#    puts "keystring = #{k.inspect()}"
-#    puts "keynum    = #{ck-b}"
 
     cipher = OpenSSL::Cipher::AES.new(128, :CFB)
     cipher.decrypt
@@ -70,7 +58,7 @@ class TimelockPuzzle
     # these arbitrary values don't actually affect results that much
     OpenSSL::BN.new("7324129").mod_exp(2**iter, 83289)
     tf = Time.now
-    return (tf-t0)/iter # seconds per squaring
+    return iter/(tf-t0) # squarings per second
   end
 
   def self.hexstring_to_int(str)
@@ -83,44 +71,112 @@ class TimelockPuzzle
 
 end
 
-def time_test(time)
-  rate = TimelockPuzzle.benchmark()
-  iters = time / rate
-  #puts "desired time: #{time}"
-  t0 = Time.now
-  puzzle = TimelockPuzzle.encrypt("hello world!", iters)
-  t1 = Time.now
-  #puts "creating puzzle: #{t1-t0}"
-  t0 = Time.now
-  TimelockPuzzle.decrypt(puzzle)
-  t1 = Time.now
-  puts "#{time}:\t #{t1-t0}"
+
+usage = <<EOS
+usage: timelock <command> [<args>]
+Available commands are:
+  encrypt     Create a new timelock puzzle
+  decrypt     Solve an existing timelock puzzle
+  benchmark   Determine solve speed on this machine
+EOS
+
+usage_encrypt = <<EOS
+usage: timelock encrypt -t <time> [options]
+Options are:
+  -s, --speed
+    Specify how many squarings per second the target can perform. If this
+    argument is omitted, the local machine will be benchmarked to determine
+    this value.
+  -f file
+    Read the plaintext from the specified file rather than standard input.
+  -o file
+    Write the timelock puzzle to a file rather than standard output.
+EOS
+
+usage_decrypt = <<EOS
+usage: timelock decrypt <time> [options]
+Options are:
+  -f file
+    Read the timelock puzzle from the specified file rather than standard
+    input.
+  -o file
+    Write the decrypted plaintext to a file rather than standard output.
+EOS
+
+def encrypt_parser(args)
+  options = { :in => STDIN, :out => STDOUT, :speed => nil, :time => 10 }
+  p = OptionParser.new do |opts|
+    opts.on("-t <time>", "--time <time>", Float) do |t|
+      options[:time] = t
+    end
+    opts.on("-s <speed>", "--speed <speed>", Float) do |s|
+      options[:speed] = s
+    end
+    opts.on("-f <file>", String) do |input|
+      options[:in] = File.open(input, "r")
+    end
+    opts.on("-o <file>", String) do |output|
+      options[:out] = File.open(output, "w")
+    end
+    if options[:speed].nil?
+      options[:speed] = TimelockPuzzle.benchmark()
+    end
+  end
+  p.parse!(args)
+  options
 end
 
-#usage = <<EOS
-#usage: #{ARGV[0]} <command> [<args>]
-#
-#EOS
+def decrypt_parser(args)
+  options = { :in => STDIN, :out => STDOUT }
+  p = OptionParser.new do |opts|
+    opts.on("-f <file>", String) do |input|
+      options[:in] = File.open(input, "r")
+    end
+    opts.on("-o <file>", String) do |output|
+      options[:out] = File.open(output, "w")
+    end
+    if options[:speed].nil?
+      options[:speed] = TimelockPuzzle.benchmark()
+    end
+  end
+  p.parse!(args)
+  options
+end
 
-#encrypt_parser = OptionsParser.new do |opts|
-#  options = { :iters => 100, :out => STDOUT }
-#  opts.on("-n", "--iterations") do |n|
-#    options[:iters] = n
-#  end
-#  
-#  opts.on("-o") do |out|
-#    options[:out] = out
-#  end
-#
-#  options
-#end
-
-#tl = TimelockPuzzle.encrypt("hello world!", 0)
-#puts tl
-#puts TimelockPuzzle.decrypt(tl).inspect()
-
-(1..5).each do |time|
-  4.times do
-    time_test(time)
+def get_contents(input)
+  if input.is_a?(IO)
+    input.read
+  else
+    IO.read(input)
   end
 end
+
+if ARGV.empty?
+  puts usage
+else
+  args = ARGV.drop(1)
+  case ARGV[0]
+  when "encrypt"
+    if args.empty?
+      puts usage_encrypt
+      exit
+    end
+    opts = encrypt_parser(args)
+    t = (opts[:time] * opts[:speed]).to_i
+    opts[:out].puts TimelockPuzzle.encrypt(get_contents(opts[:in]), t)
+    puts opts.inspect
+  when "decrypt"
+    if args.empty?
+      puts usage_decrypt
+      exit
+    end
+    opts = decrypt_parser(args)
+    opts[:out].puts TimelockPuzzle.decrypt(get_contents(opts[:in]))
+  when "benchmark"
+    puts TimelockPuzzle.benchmark()
+  else
+    puts usage
+  end
+end
+
+
